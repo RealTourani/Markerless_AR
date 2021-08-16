@@ -1,9 +1,16 @@
+# import the necessary libraries
 import cv2
 import numpy as np
+###########
 
 
-img_trained = cv2.imread('steve.jpg') # train image
+img_trained = cv2.imread('steve.jpg') # define train image
 hI , wI , cI = img_trained.shape # gettin the Height, width and channel of the trained image
+
+Sample_video = cv2.VideoCapture('steve_video.mp4') # read the sample video
+Sample_video.set(1,854) # start the sample video from x seconds
+
+ret , video_frame = Sample_video.read() # read each frame of video
 
 orb = cv2.ORB_create() # Create an object of ORB detector
 kp1 , desc1 = orb.detectAndCompute(img_trained,None) # Detect and Compute the key points and descriptors of the trained image
@@ -30,15 +37,32 @@ while True:
 
         src_coor_pts = np.float32([ [0,0], [0,hI], [wI,hI], [wI,0] ]).reshape(-1,1,2) # calculate the coordinates of the trained image
         dst_coor_pts = cv2.perspectiveTransform(src_coor_pts,M) # calculate the coordinates of input frame (from webcam)
-        cv2.polylines(frame,[np.int32(dst_coor_pts)],True,(0,255,0)) # draw a polyline (polygon) on detected image that is display (from webcam)
+        cv2.polylines(frame,[np.int32(dst_coor_pts)],True,(0,0,255),2) # draw a polyline (polygon) on detected image that is display (from webcam)
+
+        video_warp = cv2.warpPerspective(video_frame,M,(frame.shape[1],frame.shape[0])) # wrapped by M and sample video to make an image with a black background and a video instead of detected image
+
+        mask_win = np.zeros((frame.shape[0], frame.shape[1]),np.uint8) # make a black image by numpy
+
+        mask_win = cv2.fillPoly(mask_win,[np.int32(dst_coor_pts)],(255,255,255)) # make a white space instead of video on balck image
+
+        mask_win_inv = cv2.bitwise_not(mask_win) # inverse the black and white by bitwise operator
+
+        frame = cv2.bitwise_and(frame,frame,mask=mask_win_inv) # mask a mask 
+
+        frame = cv2.bitwise_or(video_warp,frame) # use bitwise to put video from sample video frame and put another things from webcam
+
+
     else:
         pass
 
     
-    # show the outputs
+    # show the outputs 
     cv2.imshow('webcam' , frame) 
-    cv2.imshow('img trained' , img_trained) 
-    cv2.imshow('matched frame',img_out)
+    # cv2.imshow('mask win',mask_win)
+    # cv2.imshow('warp',video_warp)
+
+    # cv2.imshow('img trained' , img_trained) 
+    # cv2.imshow('matched frame',img_out)
 
     if cv2.waitKey(1) == 0xFF & ord('q'): # a condition for breaking the loop
         break
