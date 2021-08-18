@@ -1,72 +1,86 @@
 # import the necessary libraries
 import cv2
 import numpy as np
-###########
+
+######
+
+frame_num = 0
+detected_obj = False
+
+#######
+
+trained_img = cv2.imread('steve.jpg') # read the sample image
+hI , wI , cI = trained_img.shape # gettin the Height, width and channel of the trained image
+
+sample_video = cv2.VideoCapture('steve_video.mp4') # read the sample video
+# sample_video.set(1,854)
+success , video_frame = sample_video.read() # read each frame of sample video
+video_frame = cv2.resize(video_frame,(wI,hI)) # resize the sample video
 
 
-img_trained = cv2.imread('steve.jpg') # define train image
-hI , wI , cI = img_trained.shape # gettin the Height, width and channel of the trained image
+orb = cv2.ORB_create(nfeatures=1000) # create an object of ORB detector
+bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True) # create BFMatcher object
 
-Sample_video = cv2.VideoCapture('steve_video.mp4') # read the sample video
-Sample_video.set(1,854) # start the sample video from x seconds
+kp1, desc1 = orb.detectAndCompute(trained_img,None) # Detect and Compute the key points and descriptors of the trained image
 
-ret , video_frame = Sample_video.read() # read each frame of video
-
-orb = cv2.ORB_create() # Create an object of ORB detector
-kp1 , desc1 = orb.detectAndCompute(img_trained,None) # Detect and Compute the key points and descriptors of the trained image
-img_trained = cv2.drawKeypoints(img_trained,kp1,None) # draw the keypoint on trained image
-
-bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck = True) # Create an object of BF MATCHER and define a method for it
-
-cap = cv2.VideoCapture(0) # read from webcam
+cap = cv2.VideoCapture(0) # read from the webcam source
 
 while True:
-    ret,frame = cap.read() # read the frame of webcam
-    frame = cv2.resize(frame,(wI,hI)) # resize the frame of webcam
-    kp2 , desc2 = orb.detectAndCompute(frame,None) # Detect and Compute the key points and descriptors of the input image
-    # frame = cv2.drawKeypoints(frame,kp2,None)
-    
-    matches = bf.match(desc1,desc2) # match the features of trained image and input image(webcam) by BF MATCHER
-    if len(matches) > 10 :
-        matches = sorted(matches,key= lambda x : x.distance) # sort the DMATCHES by their distance
-        img_out = cv2.drawMatches(img_trained,kp1,frame,kp2,matches[:10],None) # draw the match points
+    ret, frame = cap.read() # read each frame of webcam
+    copy_frame = frame.copy() # copy the frame
+
+    if detected_obj == True:
+        if frame_num == sample_video.get(cv2.CAP_PROP_FRAME_COUNT): # if the frame of video is 0
+            sample_video.set(cv2.CAP_PROP_POS_FRAMES,0) # return at the first frame of video 
+            frame_num = 0
+
+        success , video_frame = sample_video.read() # read each frame of video
+        video_frame = cv2.resize(video_frame,(wI,hI)) # resize it like sample image
+    else:
+        sample_video.set(cv2.CAP_PROP_POS_FRAMES,0) # stop show the video and return to the first frame
+        frame_num = 0
+
+
+    kp2, desc2 = orb.detectAndCompute(frame,None) # Detect and Compute the key points and descriptors of the input frame
+    matches = bf.match(desc1,desc2) # Match descriptors.
+
+    if len(matches) > 15:
+        detected_obj = True
+        matches = sorted(matches, key= lambda x : x.distance) # Sort them in the order of their distance.
+        drawn_img = cv2.drawMatches(trained_img,kp1,frame,kp2,matches[:10],None) # Draw first 10 matches.
         
         src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1,1,2) # calculate and find the Source points of trained image
-        des_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1,1,2) # calculate and find the Source points of input image
-        M , mask = cv2.findHomography(src_pts,des_pts,cv2.RANSAC,5.0) # Do Homography by RANSAC method
+        dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1,1,2) # calculate and find the Source points of input image
+        M, mask = cv2.findHomography(src_pts,dst_pts,cv2.RANSAC,5.0) # Do Homography by RANSAC method
 
-        src_coor_pts = np.float32([ [0,0], [0,hI], [wI,hI], [wI,0] ]).reshape(-1,1,2) # calculate the coordinates of the trained image
+        
+        src_coor_pts = np.float32([ [0,0], [0,hI], [wI,hI], [wI,0]]).reshape(-1,1,2) # calculate the coordinates of the trained image
         dst_coor_pts = cv2.perspectiveTransform(src_coor_pts,M) # calculate the coordinates of input frame (from webcam)
-        cv2.polylines(frame,[np.int32(dst_coor_pts)],True,(0,0,255),2) # draw a polyline (polygon) on detected image that is display (from webcam)
+        frame = cv2.polylines(frame,[np.int32(dst_coor_pts)],True,(0,0,255),2) # draw a polyline (polygon) on detected image that is display (from webcam)
 
-        video_warp = cv2.warpPerspective(video_frame,M,(frame.shape[1],frame.shape[0])) # wrapped by M and sample video to make an image with a black background and a video instead of detected image
+        warp_video = cv2.warpPerspective(video_frame,M,(frame.shape[1],frame.shape[0])) # wrapped by M and sample video to make an image with a black background and a video instead of detected image
 
-        mask_win = np.zeros((frame.shape[0], frame.shape[1]),np.uint8) # make a black image by numpy
-
+        mask_win = np.zeros((frame.shape[0],frame.shape[1]),np.uint8) # make a black image by numpy
         mask_win = cv2.fillPoly(mask_win,[np.int32(dst_coor_pts)],(255,255,255)) # make a white space instead of video on balck image
-
         mask_win_inv = cv2.bitwise_not(mask_win) # inverse the black and white by bitwise operator
+        copy_frame = cv2.bitwise_and(copy_frame,copy_frame,mask=mask_win_inv) # show the Photo margins from webcam
+        copy_frame = cv2.bitwise_or(warp_video,copy_frame) # show the video instead of sample image
 
-        frame = cv2.bitwise_and(frame,frame,mask=mask_win_inv) # mask a mask 
+        cv2.imshow('warp_video',copy_frame) # show the output
 
-        frame = cv2.bitwise_or(video_warp,frame) # use bitwise to put video from sample video frame and put another things from webcam
+    else: # it has to work when the feature detection could not find the features (the video must be display)
+        detected_obj = False
+        copy_frame = frame # put the real frame instead of copy frame
+        cv2.imshow('warp_video',copy_frame) # show the result
 
-
-    else:
-        pass
 
     
-    # show the outputs 
-    cv2.imshow('webcam' , frame) 
-    # cv2.imshow('mask win',mask_win)
-    # cv2.imshow('warp',video_warp)
 
-    # cv2.imshow('img trained' , img_trained) 
-    # cv2.imshow('matched frame',img_out)
-
-    if cv2.waitKey(1) == 0xFF & ord('q'): # a condition for breaking the loop
+    if cv2.waitKey(35) ==  0XFF & ord('q'): # condition for breaking the loop (if you press q)
         break
+    frame_num += 1
 
 
-cv2.destroyAllWindows()
 cap.release()
+cv2.destroyAllWindows()
+
