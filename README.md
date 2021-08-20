@@ -11,4 +11,4 @@
     * It uses BF matcher method for matching
     * It uses Ransac method for homography
   
-  So just install the package and define your own picture and vidoe and Then run the code :)
+  So just install the packages and define your own picture and vidoe and Then run the code :)
