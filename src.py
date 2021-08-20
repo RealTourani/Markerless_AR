@@ -19,7 +19,7 @@ video_frame = cv2.resize(video_frame,(wI,hI)) # resize the sample video
 
 
 orb = cv2.ORB_create(nfeatures=1000) # create an object of ORB detector
-bf = cv2.BFMatcher(cv2.NORM_HAMMING,crossCheck=True) # create BFMatcher object
+bf = cv2.BFMatcher(cv2.NORM_HAMMING) # create BFMatcher object
 
 kp1, desc1 = orb.detectAndCompute(trained_img,None) # Detect and Compute the key points and descriptors of the trained image
 
@@ -42,36 +42,41 @@ while True:
 
 
     kp2, desc2 = orb.detectAndCompute(frame,None) # Detect and Compute the key points and descriptors of the input frame
-    matches = bf.match(desc1,desc2) # Match descriptors.
+    if desc2 is not None:
 
-    if len(matches) > 15:
-        detected_obj = True
-        matches = sorted(matches, key= lambda x : x.distance) # Sort them in the order of their distance.
-        drawn_img = cv2.drawMatches(trained_img,kp1,frame,kp2,matches[:10],None) # Draw first 10 matches.
-        
-        src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1,1,2) # calculate and find the Source points of trained image
-        dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1,1,2) # calculate and find the Source points of input image
-        M, mask = cv2.findHomography(src_pts,dst_pts,cv2.RANSAC,5.0) # Do Homography by RANSAC method
+        matches = bf.knnMatch(desc1,desc2,k=2) # Match descriptors.
+        good = []
+        for m,n in matches:
+            if m.distance < 0.75 * n.distance:
+                good.append([m])
+        drawn_img = cv2.drawMatchesKnn(trained_img,kp1,frame,kp2,good, flags=2,outImg=None)
 
-        
-        src_coor_pts = np.float32([ [0,0], [0,hI], [wI,hI], [wI,0]]).reshape(-1,1,2) # calculate the coordinates of the trained image
-        dst_coor_pts = cv2.perspectiveTransform(src_coor_pts,M) # calculate the coordinates of input frame (from webcam)
-        frame = cv2.polylines(frame,[np.int32(dst_coor_pts)],True,(0,0,255),2) # draw a polyline (polygon) on detected image that is display (from webcam)
+        if len(good) > 15:
+            detected_obj = True
+            
+            src_pts = np.float32([kp1[m.queryIdx].pt for [m] in good]).reshape(-1,1,2) # calculate and find the Source points of trained image
+            dst_pts = np.float32([kp2[m.trainIdx].pt for [m] in good]).reshape(-1,1,2) # calculate and find the Source points of input image
+            M, mask = cv2.findHomography(src_pts,dst_pts,cv2.RANSAC,5.0) # Do Homography by RANSAC method
 
-        warp_video = cv2.warpPerspective(video_frame,M,(frame.shape[1],frame.shape[0])) # wrapped by M and sample video to make an image with a black background and a video instead of detected image
+            
+            src_coor_pts = np.float32([ [0,0], [0,hI], [wI,hI], [wI,0]]).reshape(-1,1,2) # calculate the coordinates of the trained image
+            dst_coor_pts = cv2.perspectiveTransform(src_coor_pts,M) # calculate the coordinates of input frame (from webcam)
+            frame = cv2.polylines(frame,[np.int32(dst_coor_pts)],True,(0,0,255),2) # draw a polyline (polygon) on detected image that is display (from webcam)
 
-        mask_win = np.zeros((frame.shape[0],frame.shape[1]),np.uint8) # make a black image by numpy
-        mask_win = cv2.fillPoly(mask_win,[np.int32(dst_coor_pts)],(255,255,255)) # make a white space instead of video on balck image
-        mask_win_inv = cv2.bitwise_not(mask_win) # inverse the black and white by bitwise operator
-        copy_frame = cv2.bitwise_and(copy_frame,copy_frame,mask=mask_win_inv) # show the Photo margins from webcam
-        copy_frame = cv2.bitwise_or(warp_video,copy_frame) # show the video instead of sample image
+            warp_video = cv2.warpPerspective(video_frame,M,(frame.shape[1],frame.shape[0])) # wrapped by M and sample video to make an image with a black background and a video instead of detected image
 
-        cv2.imshow('warp_video',copy_frame) # show the output
+            mask_win = np.zeros((frame.shape[0],frame.shape[1]),np.uint8) # make a black image by numpy
+            mask_win = cv2.fillPoly(mask_win,[np.int32(dst_coor_pts)],(255,255,255)) # make a white space instead of video on balck image
+            mask_win_inv = cv2.bitwise_not(mask_win) # inverse the black and white by bitwise operator
+            copy_frame = cv2.bitwise_and(copy_frame,copy_frame,mask=mask_win_inv) # show the Photo margins from webcam
+            copy_frame = cv2.bitwise_or(warp_video,copy_frame) # show the video instead of sample image
 
-    else: # it has to work when the feature detection could not find the features (the video must be display)
-        detected_obj = False
-        copy_frame = frame # put the real frame instead of copy frame
-        cv2.imshow('warp_video',copy_frame) # show the result
+            cv2.imshow('warp_video',copy_frame) # show the output
+
+        else: # it has to work when the feature detection could not find the features (the video must be display)
+            detected_obj = False
+            copy_frame = frame # put the real frame instead of copy frame
+            cv2.imshow('warp_video',copy_frame) # show the result
 
 
     
