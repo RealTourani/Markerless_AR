@@ -1,7 +1,7 @@
  Markerless_AR Project ,
  It is a kind of Animated photo that at the first you have to train a Photo board that you want , Then you can read the frame of your webcam and when the program see the photo board that you traind It will show a video that you defined in the project.(That is an example of marker-less AR).
  
- - the necessary packages :
+ -- the necessary packages :
   - opencv-python ----> (win) ----> pip install opencv-python / (linux) ----> pip3 install opencv-python
   - numpy ----> (win) ----> pip install numpy / (linux) ----> pip3 install numpy
   
